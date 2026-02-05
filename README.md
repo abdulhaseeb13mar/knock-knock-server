@@ -25,6 +25,87 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Knock Knock SaaS Backend
+
+This NestJS backend powers a multi-tenant AI outreach platform. It includes:
+
+- JWT auth and user settings
+- Gmail OAuth2 integration (no app passwords)
+- AI provider abstraction (OpenAI, Anthropic, Grok)
+- CSV recipient imports
+- BullMQ background jobs with Redis
+- SSE progress streaming
+- Email history
+
+### Quick start
+
+1. Install dependencies
+
+2. Copy env file
+
+3. Run database migrations
+
+4. Start the API
+
+See the full instructions below for details.
+
+## Environment variables
+
+Copy the example env file and fill in values:
+
+```
+cp .env.example .env
+```
+
+Required variables:
+
+- DATABASE_URL
+- REDIS_URL
+- JWT_SECRET
+- ENCRYPTION_KEY (32 bytes base64)
+- GOOGLE_CLIENT_ID
+- GOOGLE_CLIENT_SECRET
+- GOOGLE_REDIRECT_URI
+
+## Prisma
+
+Generate Prisma client:
+
+```
+pnpm run prisma:generate
+```
+
+Run migrations:
+
+```
+pnpm run prisma:migrate
+```
+
+## Running the server
+
+```
+pnpm run start:dev
+```
+
+## Core endpoints
+
+- POST /auth/register
+- POST /auth/login
+- GET /integrations/gmail/connect
+- GET /integrations/gmail/callback
+- POST /ai/key
+- GET /ai/providers
+- POST /recipients/import
+- GET /recipients
+- POST /jobs/start
+- POST /jobs/:id/pause
+- POST /jobs/:id/resume
+- POST /jobs/:id/retry
+- GET /jobs/:id/status
+- GET /jobs/:id/stream (SSE)
+- GET /emails/sent
+- POST /users/resume
+
 ## Project setup
 
 ```bash

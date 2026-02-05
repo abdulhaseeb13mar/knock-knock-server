@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AiProvider {
+  openai
+  anthropic
+  grok
+}
+
+enum RecipientStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum JobStatus {
+  RUNNING
+  PAUSED
+  COMPLETED
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  passwordHash      String
+  createdAt         DateTime           @default(now())
+  settings          UserSettings?
+  connectedAccounts ConnectedAccount[]
+  aiKeys            AiKey[]
+  recipients        Recipient[]
+  jobs              EmailJob[]
+  sentEmails        SentEmail[]
+  resumes           ResumeFile[]
+  auditLogs         AuditLog[]
+}
+
+model UserSettings {
+  id                 String      @id @default(uuid())
+  userId             String      @unique
+  dailyLimit         Int         @default(50)
+  delayMs            Int         @default(1000)
+  rewriteInterval    Int         @default(1)
+  defaultAiProvider  AiProvider  @default(openai)
+  user               User        @relation(fields: [userId], references: [id])
+}
+
+model ConnectedAccount {
+  id           String   @id @default(uuid())
+  userId       String
+  provider     String
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, provider])
+  @@unique([userId, provider])
+}
+
+model AiKey {
+  id           String     @id @default(uuid())
+  userId       String
+  provider     AiProvider
+  encryptedKey String
+  createdAt    DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@unique([userId, provider])
+}
+
+model Recipient {
+  id        String          @id @default(uuid())
+  userId    String
+  email     String
+  status    RecipientStatus @default(PENDING)
+  error     String?
+  sentAt    DateTime?
+  jobId     String?
+  createdAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id])
+  job       EmailJob?       @relation(fields: [jobId], references: [id])
+
+  @@index([userId, status])
+  @@unique([userId, email])
+}
+
+model EmailJob {
+  id          String    @id @default(uuid())
+  userId      String
+  status      JobStatus @default(RUNNING)
+  total       Int
+  sentCount   Int       @default(0)
+  failedCount Int       @default(0)
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  user        User      @relation(fields: [userId], references: [id])
+  recipients  Recipient[]
+  sentEmails  SentEmail[]
+
+  @@index([userId, status])
+}
+
+model SentEmail {
+  id             String   @id @default(uuid())
+  userId         String
+  jobId          String
+  recipientEmail String
+  subject        String
+  body           String
+  sentAt         DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+  job            EmailJob @relation(fields: [jobId], references: [id])
+
+  @@index([userId, sentAt])
+}
+
+model ResumeFile {
+  id        String   @id @default(uuid())
+  userId    String
+  path      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+}
