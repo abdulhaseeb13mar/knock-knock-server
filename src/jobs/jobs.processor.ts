@@ -46,6 +46,7 @@ export class JobsProcessor extends WorkerHost {
     const recipients = await this.prisma.recipient.findMany({
       where: { jobId, status: RecipientStatus.PENDING },
       orderBy: { createdAt: 'asc' },
+      include: { companyEmail: true },
     });
 
     let sentCount = 0;
@@ -86,7 +87,7 @@ export class JobsProcessor extends WorkerHost {
         // Design choice: use nodemailer with Gmail OAuth2 to ensure emails land in Sent folder.
         await transport.sendMail({
           from: user.email,
-          to: recipient.email,
+          to: recipient.companyEmail.email,
           subject: 'Hello from Knock Knock',
           text: body,
         });
@@ -101,7 +102,7 @@ export class JobsProcessor extends WorkerHost {
           data: {
             userId,
             jobId,
-            recipientEmail: recipient.email,
+            recipientEmail: recipient.companyEmail.email,
             subject: 'Hello from Knock Knock',
             body,
           },

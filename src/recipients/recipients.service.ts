@@ -25,10 +25,23 @@ export class RecipientsService {
       return { imported: 0 };
     }
 
+    // Ensure company email records exist, then attach per-user recipient rows
+    const uniqueEmails = Array.from(new Set(emails));
+
+    const companyEmails = await this.prisma.$transaction(
+      uniqueEmails.map((email) =>
+        this.prisma.companyEmail.upsert({
+          where: { email },
+          update: {},
+          create: { email, companyName: email },
+        }),
+      ),
+    );
+
     await this.prisma.recipient.createMany({
-      data: emails.map((email: string) => ({
+      data: companyEmails.map((c) => ({
         userId,
-        email,
+        companyEmailId: c.id,
       })),
       skipDuplicates: true,
     });
@@ -45,6 +58,7 @@ export class RecipientsService {
   async listRecipients(userId: string) {
     return this.prisma.recipient.findMany({
       where: { userId },
+      include: { companyEmail: true },
       orderBy: { createdAt: 'desc' },
     });
   }
