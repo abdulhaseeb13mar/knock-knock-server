@@ -32,6 +32,7 @@ export class GmailController {
       throw new BadRequestException('Invalid OAuth callback');
     }
     await this.gmailService.handleOAuthCallback(code, state);
-    return res.redirect('/integrations/gmail/success');
+    const frontend = process.env.FRONTEND_URL;
+    return res.redirect(`${frontend}/integrations/gmail/success`);
   }
 }
