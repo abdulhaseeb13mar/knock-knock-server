@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Post,
   Query,
   Res,
   UseGuards,
@@ -20,6 +21,20 @@ export class GmailController {
   connect(@CurrentUser() user: { userId: string }) {
     const url = this.gmailService.generateAuthUrl(user.userId);
     return { url };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('status')
+  async status(@CurrentUser() user: { userId: string }) {
+    const integrated = await this.gmailService.isConnected(user.userId);
+    return { integrated };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('revoke')
+  async revoke(@CurrentUser() user: { userId: string }) {
+    await this.gmailService.revoke(user.userId);
+    return { success: true };
   }
 
   @Get('callback')

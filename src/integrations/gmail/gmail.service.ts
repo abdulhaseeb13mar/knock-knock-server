@@ -102,6 +102,21 @@ export class GmailService {
     };
   }
 
+  async isConnected(userId: string) {
+    const account = await this.prisma.connectedAccount.findFirst({
+      where: { userId, provider: 'gmail' },
+      select: { id: true },
+    });
+    return Boolean(account);
+  }
+
+  async revoke(userId: string) {
+    await this.prisma.connectedAccount.deleteMany({
+      where: { userId, provider: 'gmail' },
+    });
+    await this.audit.log({ userId, action: 'gmail.revoked' });
+  }
+
   async refreshAccessToken(userId: string) {
     const tokens = await this.getDecryptedTokens(userId);
     if (!tokens) {
