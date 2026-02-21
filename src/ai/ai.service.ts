@@ -40,6 +40,40 @@ export class AiService {
     return Object.values(AiProvider);
   }
 
+  async getUserKeys(userId: string) {
+    const keys = await this.prisma.aiKey.findMany({
+      where: { userId },
+      select: { provider: true, createdAt: true },
+    });
+    return keys;
+  }
+
+  async updateApiKey(userId: string, provider: AiProvider, apiKey: string) {
+    const encryptedKey = this.encryption.encrypt(apiKey);
+    await this.prisma.aiKey.update({
+      where: { userId_provider: { userId, provider } },
+      data: { encryptedKey },
+    });
+    await this.audit.log({
+      userId,
+      action: 'ai.key.updated',
+      metadata: { provider },
+    });
+    return { success: true };
+  }
+
+  async deleteApiKey(userId: string, provider: AiProvider) {
+    await this.prisma.aiKey.delete({
+      where: { userId_provider: { userId, provider } },
+    });
+    await this.audit.log({
+      userId,
+      action: 'ai.key.deleted',
+      metadata: { provider },
+    });
+    return { success: true };
+  }
+
   async rewriteEmail(userId: string, input: string) {
     const settings = await this.prisma.userSettings.findUnique({
       where: { userId },
