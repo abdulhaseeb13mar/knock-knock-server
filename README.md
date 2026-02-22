@@ -104,7 +104,33 @@ pnpm run start:dev
 - GET /jobs/:id/status
 - GET /jobs/:id/stream (SSE)
 - GET /emails/sent
-- POST /users/resume
+
+## Resume links via Google Drive
+
+All resume references now point to shared Google Drive files. Users must step through these actions:
+
+- Upload the resume to Google Drive and set the sharing level to “Anyone with the link can view.”
+- Copy the shared link (e.g., `https://drive.google.com/file/d/FILE_ID/view?usp=sharing`).
+- Submit the link through the API so it can be attached to outbound emails.
+
+Routes
+
+- `POST /users/resumes/drive-link` → `{ "sharedUrl": "https://drive.google.com/…" }`
+- `GET /users/resumes` → lists saved records `{ id, sharedUrl, fileId, createdAt }`
+- `DELETE /users/resumes/:id` → removes one of the saved links
+
+Each resume record keeps the Drive `fileId`, which is converted to `https://drive.google.com/uc?export=download&id=FILE_ID` when emails are sent. Attachments are only downloaded and included when the file is smaller than ~25 MB; otherwise, the email body appends the shared URL so every recipient still receives resume access.
+
+When starting a job you must now include the desired resume:
+
+```
+POST /jobs/start
+{
+  "resumeId": "<resumeId from GET /users/resumes>"
+}
+```
+
+The worker reads the Drive file, attempts to download it once per job, and attaches it when the size can be determined and remains under Gmail’s 25 MB limit. If the download fails or the size is unknown/too big, the job continues but the email body gets `Resume: https://drive.google.com/…` appended instead.
 
 ## Project setup
 
