@@ -6,6 +6,15 @@ import { JobsEventsService } from './jobs-events.service';
 import { AiService } from '../ai/ai.service';
 import { JobStatus, RecipientStatus } from '@prisma/client';
 import nodemailer from 'nodemailer';
+import { basename } from 'path';
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+type ResumeAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+};
 
 @Processor('email-jobs')
 export class JobsProcessor extends WorkerHost {
@@ -18,14 +27,22 @@ export class JobsProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ jobId: string; userId: string }>) {
-    const { jobId, userId } = job.data;
+  async process(job: Job<{ jobId: string; userId: string; resumeId: string }>) {
+    const { jobId, userId, resumeId } = job.data;
     const [user, settings] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: userId } }),
       this.prisma.userSettings.findUnique({ where: { userId } }),
     ]);
 
     if (!user || !settings) {
+      return;
+    }
+
+    const resume = await this.prisma.resumeFile.findFirst({
+      where: { id: resumeId, userId },
+    });
+
+    if (!resume) {
       return;
     }
 
@@ -51,6 +68,8 @@ export class JobsProcessor extends WorkerHost {
 
     let sentCount = 0;
     let failedCount = 0;
+    const attachment = await this.getDriveAttachment(resume.fileId);
+    const shouldUseLinkOnly = !attachment;
 
     for (const [index, recipient] of recipients.entries()) {
       const jobState = await this.prisma.emailJob.findUnique({
@@ -83,13 +102,25 @@ export class JobsProcessor extends WorkerHost {
         const body = shouldRewrite
           ? await this.safeRewrite(userId, baseBody)
           : baseBody;
+        const bodyWithResume = shouldUseLinkOnly
+          ? `${body}\n\nResume: ${resume.sharedUrl}`
+          : body;
 
         // Design choice: use nodemailer with Gmail OAuth2 to ensure emails land in Sent folder.
         await transport.sendMail({
           from: user.email,
           to: recipient.companyEmail.email,
           subject: 'Hello from Knock Knock',
-          text: body,
+          text: bodyWithResume,
+          attachments: attachment
+            ? [
+                {
+                  filename: attachment.filename,
+                  content: attachment.content,
+                  contentType: attachment.contentType,
+                },
+              ]
+            : undefined,
         });
 
         sentCount += 1;
@@ -104,7 +135,7 @@ export class JobsProcessor extends WorkerHost {
             jobId,
             recipientEmail: recipient.companyEmail.email,
             subject: 'Hello from Knock Knock',
-            body,
+            body: bodyWithResume,
           },
         });
 
@@ -162,5 +193,61 @@ export class JobsProcessor extends WorkerHost {
         sentAt: { gte: start },
       },
     });
+  }
+
+  private async getDriveAttachment(
+    fileId: string,
+  ): Promise<ResumeAttachment | null> {
+    const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+
+    const headResponse = await fetch(downloadUrl, { method: 'HEAD' }).catch(
+      () => null,
+    );
+
+    const contentLength = headResponse?.headers.get('content-length');
+    if (!contentLength) {
+      return null;
+    }
+
+    const size = Number(contentLength);
+    if (!Number.isFinite(size) || size <= 0 || size > MAX_ATTACHMENT_BYTES) {
+      return null;
+    }
+
+    const response = await fetch(downloadUrl).catch(() => null);
+    if (!response?.ok) {
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const content = Buffer.from(arrayBuffer);
+    if (content.length === 0 || content.length > MAX_ATTACHMENT_BYTES) {
+      return null;
+    }
+
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const filename =
+      this.extractFilename(disposition) ?? `resume-${fileId}.pdf`;
+    const contentType =
+      response.headers.get('content-type') ?? 'application/pdf';
+
+    return {
+      filename,
+      content,
+      contentType,
+    };
+  }
+
+  private extractFilename(contentDisposition: string) {
+    const match = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(
+      contentDisposition,
+    );
+    if (!match?.[1]) {
+      return null;
+    }
+
+    const decoded = decodeURIComponent(match[1]).replace(/^"|"$/g, '');
+    const normalized = basename(decoded.trim());
+    return normalized || null;
   }
 }

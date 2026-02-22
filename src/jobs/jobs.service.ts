@@ -15,7 +15,15 @@ export class JobsService {
     private readonly audit: AuditService,
   ) {}
 
-  async startJob(userId: string) {
+  async startJob(userId: string, resumeId: string) {
+    const resume = await this.prisma.resumeFile.findFirst({
+      where: { id: resumeId, userId },
+    });
+
+    if (!resume) {
+      throw new NotFoundException('Resume not found');
+    }
+
     const recipients = await this.prisma.recipient.findMany({
       where: { userId, status: RecipientStatus.PENDING },
       take: 10000,
@@ -38,13 +46,17 @@ export class JobsService {
       data: { jobId: job.id },
     });
 
-    await this.queue.add('send-bulk-email', { jobId: job.id, userId });
+    await this.queue.add('send-bulk-email', {
+      jobId: job.id,
+      userId,
+      resumeId,
+    });
 
     this.jobsEvents.emit(job.id, { status: job.status, total: job.total });
     await this.audit.log({
       userId,
       action: 'jobs.start',
-      metadata: { jobId: job.id },
+      metadata: { jobId: job.id, resumeId },
     });
 
     return job;
@@ -87,6 +99,15 @@ export class JobsService {
   }
 
   async retryFailed(userId: string, jobId: string) {
+    const latestResume = await this.prisma.resumeFile.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latestResume) {
+      throw new NotFoundException('Resume not found');
+    }
+
     await this.prisma.recipient.updateMany({
       where: { userId, jobId, status: RecipientStatus.FAILED },
       data: { status: RecipientStatus.PENDING, error: null },
@@ -103,7 +124,11 @@ export class JobsService {
       throw new NotFoundException('Job not found');
     }
 
-    await this.queue.add('send-bulk-email', { jobId: job.id, userId });
+    await this.queue.add('send-bulk-email', {
+      jobId: job.id,
+      userId,
+      resumeId: latestResume.id,
+    });
     this.jobsEvents.emit(job.id, { status: job.status, retry: true });
     await this.audit.log({ userId, action: 'jobs.retry', metadata: { jobId } });
     return job;

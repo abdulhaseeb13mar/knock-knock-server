@@ -1,43 +1,46 @@
 import {
   BadRequestException,
   Controller,
+  Delete,
+  Get,
+  Param,
   Post,
-  UploadedFile,
+  Body,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
-import { StorageService } from '../storage/storage.service';
+import { SaveDriveResumeDto } from './dto/save-drive-resume.dto';
 
 @Controller('users')
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly storage: StorageService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @UseGuards(JwtAuthGuard)
-  @Post('resume')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadResume(
+  @Post('resumes/drive-link')
+  async saveDriveResume(
     @CurrentUser() user: { userId: string },
-    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: SaveDriveResumeDto,
   ) {
-    if (!file?.buffer) {
-      throw new BadRequestException('PDF file is required');
+    return this.usersService.saveDriveResume(user.userId, dto.sharedUrl);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('resumes')
+  listResumes(@CurrentUser() user: { userId: string }) {
+    return this.usersService.listResumes(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('resumes/:id')
+  async deleteResume(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    if (!id) {
+      throw new BadRequestException('Resume id is required');
     }
-
-    if (file.mimetype !== 'application/pdf') {
-      throw new BadRequestException('Only PDF files are supported');
-    }
-
-    const path = await this.storage.saveResume(file.buffer, file.originalname);
-
-    await this.usersService.saveResumePath(user.userId, path);
-
-    return { path };
+    return this.usersService.deleteResume(user.userId, id);
   }
 }

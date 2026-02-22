@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   MessageEvent,
@@ -13,6 +14,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JobsService } from './jobs.service';
 import { JobsEventsService } from './jobs-events.service';
+import { StartJobDto } from './dto/start-job.dto';
 
 @Controller('jobs')
 export class JobsController {
@@ -23,8 +25,8 @@ export class JobsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('start')
-  start(@CurrentUser() user: { userId: string }) {
-    return this.jobsService.startJob(user.userId);
+  start(@CurrentUser() user: { userId: string }, @Body() dto: StartJobDto) {
+    return this.jobsService.startJob(user.userId, dto.resumeId);
   }
 
   @UseGuards(JwtAuthGuard)
