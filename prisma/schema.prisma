@@ -75,32 +75,43 @@ model AiKey {
 }
 
 model Recipient {
-  id        String          @id @default(uuid())
-  userId    String
+  id             String          @id @default(uuid())
+  userId         String
   companyEmailId String
-  status    RecipientStatus @default(PENDING)
-  error     String?
-  sentAt    DateTime?
-  jobId     String?
-  createdAt DateTime        @default(now())
-  user      User            @relation(fields: [userId], references: [id])
-  job       EmailJob?       @relation(fields: [jobId], references: [id])
-  companyEmail CompanyEmail @relation(fields: [companyEmailId], references: [id])
+  status         RecipientStatus @default(PENDING)
+  error          String?
+  sentAt         DateTime?
+  jobId          String?
+  createdAt      DateTime        @default(now())
+  user           User            @relation(fields: [userId], references: [id])
+  job            EmailJob?       @relation(fields: [jobId], references: [id])
+  companyEmail   CompanyEmail    @relation(fields: [companyEmailId], references: [id])
 
   @@index([userId, status])
   @@index([companyEmailId])
   @@unique([userId, companyEmailId])
 }
 
-model CompanyEmail {
-  id          String    @id @default(uuid())
-  email       String    @unique
-  companyName String
+model Company {
+  id          String       @id @default(uuid())
+  slug        String       @unique
+  name        String
   description String?
   logo        String?
-  tags        String[]  @default([])
-  createdAt   DateTime  @default(now())
-  recipients  Recipient[]
+  tags        String[]     @default([])
+  createdAt   DateTime     @default(now())
+  emails      CompanyEmail[]
+}
+
+model CompanyEmail {
+  id         String      @id @default(uuid())
+  email      String      @unique
+  companyId  String?
+  createdAt  DateTime    @default(now())
+  company    Company?    @relation(fields: [companyId], references: [id])
+  recipients Recipient[]
+
+  @@index([companyId])
 }
 
 model EmailJob {

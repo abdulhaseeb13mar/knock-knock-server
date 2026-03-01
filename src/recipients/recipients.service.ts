@@ -25,18 +25,53 @@ export class RecipientsService {
       return { imported: 0 };
     }
 
-    // Ensure company email records exist, then attach per-user recipient rows
+    // Ensure company + company email records exist, then attach per-user recipient rows
     const uniqueEmails = Array.from(new Set(emails));
 
-    const companyEmails = await this.prisma.$transaction(
-      uniqueEmails.map((email) =>
-        this.prisma.companyEmail.upsert({
+    const companyEmails = await this.prisma.$transaction(async (tx) => {
+      const bySlug = new Map<string, string>();
+      const results = [] as Array<{ id: string; email: string }>;
+
+      for (const email of uniqueEmails) {
+        const companySlug = this.getCompanySlugFromEmail(email);
+        let companyId: string | undefined;
+
+        if (companySlug) {
+          companyId = bySlug.get(companySlug);
+
+          if (!companyId) {
+            const company = await tx.company.upsert({
+              where: { slug: companySlug },
+              update: {},
+              create: {
+                slug: companySlug,
+                name: this.slugToCompanyName(companySlug),
+              },
+            });
+
+            companyId = company.id;
+            bySlug.set(companySlug, companyId);
+          }
+        }
+
+        const companyEmail = await tx.companyEmail.upsert({
           where: { email },
           update: {},
-          create: { email, companyName: email },
-        }),
-      ),
-    );
+          create: {
+            email,
+            companyId: companyId ?? null,
+          },
+          select: {
+            id: true,
+            email: true,
+          },
+        });
+
+        results.push(companyEmail);
+      }
+
+      return results;
+    });
 
     await this.prisma.recipient.createMany({
       data: companyEmails.map((c) => ({
@@ -56,14 +91,82 @@ export class RecipientsService {
   }
 
   async listRecipients(userId: string) {
-    return this.prisma.recipient.findMany({
+    const recipients = await this.prisma.recipient.findMany({
       where: { userId },
-      include: { companyEmail: true },
+      include: {
+        companyEmail: {
+          include: {
+            company: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
+    });
+
+    return recipients.map((recipient) => {
+      const company = recipient.companyEmail.company;
+
+      return {
+        ...recipient,
+        companyEmail: {
+          ...recipient.companyEmail,
+          companyName: company?.name ?? null,
+          description: company?.description ?? null,
+          logo: company?.logo ?? null,
+          tags: company?.tags ?? [],
+        },
+      };
     });
   }
 
   private isValidEmail(email: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email ?? '');
+  }
+
+  private getCompanySlugFromEmail(email: string) {
+    const domainPart = email.split('@')[1];
+    if (!domainPart) {
+      return null;
+    }
+
+    const rootDomain = domainPart.split('.')[0]?.toLowerCase();
+    if (!rootDomain) {
+      return null;
+    }
+
+    const genericDomains = new Set([
+      'gmail',
+      'yahoo',
+      'outlook',
+      'hotmail',
+      'live',
+      'aol',
+      'icloud',
+      'protonmail',
+      'yandex',
+      'zoho',
+      'gmx',
+      'qq',
+      '126',
+      '163',
+      'sina',
+      'msn',
+      'verizon',
+      'att',
+      'comcast',
+      'btinternet',
+      'rocketmail',
+      'rediffmail',
+      'mail.ru',
+    ]);
+    return genericDomains.has(rootDomain) ? null : rootDomain;
+  }
+
+  private slugToCompanyName(slug: string) {
+    return slug
+      .split('-')
+      .filter(Boolean)
+      .map((part) => part[0].toUpperCase() + part.slice(1))
+      .join(' ');
   }
 }
