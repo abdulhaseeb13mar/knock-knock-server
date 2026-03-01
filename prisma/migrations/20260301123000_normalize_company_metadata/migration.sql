@@ -35,13 +35,22 @@ WITH normalized AS (
 ),
 rolled AS (
     SELECT
-        slug,
-        MIN(name) AS name,
-        (ARRAY_REMOVE(ARRAY_AGG("description"), NULL))[1] AS description,
-        (ARRAY_REMOVE(ARRAY_AGG("logo"), NULL))[1] AS logo,
-        COALESCE((ARRAY_REMOVE(ARRAY_AGG("tags"), NULL))[1], ARRAY[]::TEXT[]) AS tags
-    FROM normalized
-    WHERE slug <> ''
+        n.slug,
+        MIN(n.name) AS name,
+        MIN(n."description") FILTER (WHERE n."description" IS NOT NULL) AS description,
+        MIN(n."logo") FILTER (WHERE n."logo" IS NOT NULL) AS logo,
+        COALESCE(
+            (
+                SELECT n2."tags"
+                FROM normalized n2
+                WHERE n2.slug = n.slug
+                AND n2."tags" IS NOT NULL
+                LIMIT 1
+            ),
+            ARRAY[]::TEXT[]
+        ) AS tags
+    FROM normalized n
+    WHERE n.slug <> ''
     GROUP BY slug
 )
 INSERT INTO "Company" ("id", "slug", "name", "description", "logo", "tags", "createdAt")
