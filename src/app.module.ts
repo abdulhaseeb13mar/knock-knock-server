@@ -17,6 +17,7 @@ import { AiModule } from './ai/ai.module';
 import { RecipientsModule } from './recipients/recipients.module';
 import { JobsModule } from './jobs/jobs.module';
 import { EmailsModule } from './emails/emails.module';
+import { EmailPromptSetsModule } from './email-prompt-sets/email-prompt-sets.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { EmailsModule } from './emails/emails.module';
     RecipientsModule,
     JobsModule,
     EmailsModule,
+    EmailPromptSetsModule,
   ],
   controllers: [AppController],
   providers: [
