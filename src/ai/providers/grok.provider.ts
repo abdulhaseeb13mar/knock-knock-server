@@ -15,7 +15,9 @@ export class GrokProvider implements AiRewriteProvider {
     });
 
     if (!response.ok) {
-      throw new Error('Grok request failed');
+      const errorData = await response.json();
+      console.error('Grok request failed:', errorData);
+      throw new Error(`Grok request failed: ${JSON.stringify(errorData)}`);
     }
 
     // TODO: Add proper type definitions for the response

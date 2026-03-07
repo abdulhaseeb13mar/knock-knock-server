@@ -7,20 +7,21 @@ export class AnthropicProvider implements AiRewriteProvider {
       headers: {
         'x-api-key': userConfig.apiKey,
         'Content-Type': 'application/json',
-        'anthropic-version': '2023-06-01',
+        'anthropic-version': '2024-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 400,
         messages: [{ role: 'user', content: input }],
       }),
     });
 
     if (!response.ok) {
-      throw new Error('Anthropic request failed');
+      const errorData = await response.json();
+      console.error('Anthropic request failed:', errorData);
+      throw new Error(`Anthropic request failed: ${JSON.stringify(errorData)}`);
     }
 
-    // TODO: Add proper type definitions for the response
     const json = await response.json();
     return json?.content?.[0]?.text ?? input;
   }
