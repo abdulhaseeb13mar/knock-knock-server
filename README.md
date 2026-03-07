@@ -95,6 +95,10 @@ pnpm run start:dev
 - GET /integrations/gmail/callback
 - POST /ai/key
 - GET /ai/providers
+- GET /ai/keys
+- PUT /ai/keys/:provider
+- DELETE /ai/keys/:provider
+- PUT /ai/keys/priority
 - POST /recipients/import
 - GET /recipients
 - POST /jobs/start

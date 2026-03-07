@@ -80,6 +80,7 @@ model AiKey {
   userId       String
   provider     AiProvider
   encryptedKey String
+  priority     Int
   createdAt    DateTime   @default(now())
   user         User       @relation(fields: [userId], references: [id])
 

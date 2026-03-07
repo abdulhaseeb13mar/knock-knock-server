@@ -4,10 +4,12 @@ import {
   Delete,
   Get,
   Param,
+  ParseEnumPipe,
   Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
+import { AiProvider } from '@prisma/client';
 import { AiService } from './ai.service';
 import { SaveKeyDto } from './dto/save-key.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -39,13 +41,26 @@ export class AiController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Put('keys/priority')
+  async updateKeyPriority(
+    @CurrentUser() user: { userId: string },
+    @Body() prioritiesByProvider: Record<AiProvider, number>,
+  ): Promise<{ success: true }> {
+    await this.aiService.updateApiKeyPriority(
+      user.userId,
+      prioritiesByProvider,
+    );
+    return { success: true };
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Put('keys/:provider')
   async updateKey(
     @CurrentUser() user: { userId: string },
-    @Param('provider') provider: string,
+    @Param('provider', new ParseEnumPipe(AiProvider)) provider: AiProvider,
     @Body() dto: SaveKeyDto,
   ) {
-    await this.aiService.updateApiKey(user.userId, provider as any, dto.apiKey);
+    await this.aiService.updateApiKey(user.userId, provider, dto.apiKey);
     return { success: true };
   }
 
@@ -53,8 +68,8 @@ export class AiController {
   @Delete('keys/:provider')
   async deleteKey(
     @CurrentUser() user: { userId: string },
-    @Param('provider') provider: string,
+    @Param('provider', new ParseEnumPipe(AiProvider)) provider: AiProvider,
   ) {
-    return this.aiService.deleteApiKey(user.userId, provider as any);
+    return this.aiService.deleteApiKey(user.userId, provider);
   }
 }
