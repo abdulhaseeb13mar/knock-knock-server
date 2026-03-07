@@ -94,6 +94,7 @@ export class JobsProcessor extends WorkerHost {
       }
 
       try {
+        const subject = `Hello from, from Knock Knock`;
         const baseBody =
           'This is a placeholder email body. Replace with AI-generated content.';
         const shouldRewrite =
@@ -110,7 +111,7 @@ export class JobsProcessor extends WorkerHost {
         await transport.sendMail({
           from: user.email,
           to: recipient.companyEmail.email,
-          subject: 'Hello from Knock Knock',
+          subject,
           text: bodyWithResume,
           attachments: attachment
             ? [
@@ -134,7 +135,7 @@ export class JobsProcessor extends WorkerHost {
             userId,
             jobId,
             recipientEmail: recipient.companyEmail.email,
-            subject: 'Hello from Knock Knock',
+            subject,
             body: bodyWithResume,
           },
         });
