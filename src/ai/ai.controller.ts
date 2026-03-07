@@ -12,6 +12,7 @@ import {
 import { AiProvider } from '@prisma/client';
 import { AiService } from './ai.service';
 import { SaveKeyDto } from './dto/save-key.dto';
+import { RewriteEmailDto } from './dto/rewrite-email.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -71,5 +72,14 @@ export class AiController {
     @Param('provider', new ParseEnumPipe(AiProvider)) provider: AiProvider,
   ) {
     return this.aiService.deleteApiKey(user.userId, provider);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('rewrite')
+  async rewriteEmail(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: RewriteEmailDto,
+  ) {
+    return this.aiService.rewriteEmail(user.userId, dto.input);
   }
 }

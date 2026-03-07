@@ -216,19 +216,16 @@ export class AiService {
   }
 
   async rewriteEmail(userId: string, input: string) {
-    const settings = await this.prisma.userSettings.findUnique({
+    const apiKeyRecord = await this.prisma.aiKey.findFirst({
       where: { userId },
-    });
-
-    const provider = settings?.defaultAiProvider ?? AiProvider.openai;
-    const apiKeyRecord = await this.prisma.aiKey.findUnique({
-      where: { userId_provider: { userId, provider } },
+      orderBy: { priority: 'asc' },
     });
 
     if (!apiKeyRecord) {
-      throw new Error('Missing API key for provider');
+      throw new Error('No API keys configured for user');
     }
 
+    const provider = apiKeyRecord.provider;
     const apiKey = this.encryption.decrypt(apiKeyRecord.encryptedKey);
     return this.providers[provider].rewriteEmail(input, { apiKey });
   }
