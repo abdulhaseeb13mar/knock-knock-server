@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,7 +19,7 @@ export class JobsService {
     private readonly audit: AuditService,
   ) {}
 
-  async startJob(userId: string, resumeId: string) {
+  async startJob(userId: string, resumeId: string, promptSetId: string) {
     const resume = await this.prisma.resumeFile.findFirst({
       where: { id: resumeId, userId },
     });
@@ -23,6 +27,8 @@ export class JobsService {
     if (!resume) {
       throw new NotFoundException('Resume not found');
     }
+
+    await this.getPromptSetForUser(userId, promptSetId);
 
     const recipients = await this.prisma.recipient.findMany({
       where: { userId, status: RecipientStatus.PENDING },
@@ -36,6 +42,7 @@ export class JobsService {
     const job = await this.prisma.emailJob.create({
       data: {
         userId,
+        emailPromptSetId: promptSetId,
         status: JobStatus.RUNNING,
         total: recipients.length,
       },
@@ -56,10 +63,42 @@ export class JobsService {
     await this.audit.log({
       userId,
       action: 'jobs.start',
-      metadata: { jobId: job.id, resumeId },
+      metadata: { jobId: job.id, resumeId, promptSetId },
     });
 
     return job;
+  }
+
+  async updatePromptSet(userId: string, jobId: string, promptSetId: string) {
+    await this.getPromptSetForUser(userId, promptSetId);
+
+    const job = await this.prisma.emailJob.findFirst({
+      where: { id: jobId, userId },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    if (job.status === JobStatus.COMPLETED) {
+      throw new BadRequestException(
+        'Cannot change prompt set for a completed job',
+      );
+    }
+
+    const updatedJob = await this.prisma.emailJob.update({
+      where: { id: jobId },
+      data: { emailPromptSetId: promptSetId },
+    });
+
+    this.jobsEvents.emit(jobId, { emailPromptSetId: promptSetId });
+    await this.audit.log({
+      userId,
+      action: 'jobs.prompt-set.updated',
+      metadata: { jobId, promptSetId },
+    });
+
+    return updatedJob;
   }
 
   async pauseJob(userId: string, jobId: string) {
@@ -152,5 +191,17 @@ export class JobsService {
       },
     });
     this.jobsEvents.emit(jobId, payload);
+  }
+
+  private async getPromptSetForUser(userId: string, promptSetId: string) {
+    const promptSet = await this.prisma.emailPromptSet.findFirst({
+      where: { id: promptSetId, userId },
+    });
+
+    if (!promptSet) {
+      throw new NotFoundException('Email prompt set not found');
+    }
+
+    return promptSet;
   }
 }

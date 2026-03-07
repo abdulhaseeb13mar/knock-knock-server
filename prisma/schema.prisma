@@ -47,6 +47,8 @@ model EmailPromptSet {
   aiPrompt    String
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
+  emailJobs   EmailJob[]
+  sentEmails  SentEmail[]
 
   @@index([userId])
 }
@@ -130,6 +132,7 @@ model CompanyEmail {
 model EmailJob {
   id          String    @id @default(uuid())
   userId      String
+  emailPromptSetId String?
   status      JobStatus @default(RUNNING)
   total       Int
   sentCount   Int       @default(0)
@@ -137,24 +140,29 @@ model EmailJob {
   startedAt   DateTime  @default(now())
   completedAt DateTime?
   user        User      @relation(fields: [userId], references: [id])
+  emailPromptSet EmailPromptSet? @relation(fields: [emailPromptSetId], references: [id], onDelete: SetNull)
   recipients  Recipient[]
   sentEmails  SentEmail[]
 
   @@index([userId, status])
+  @@index([emailPromptSetId])
 }
 
 model SentEmail {
   id             String   @id @default(uuid())
   userId         String
   jobId          String
+  emailPromptSetId String?
   recipientEmail String
   subject        String
   body           String
   sentAt         DateTime @default(now())
   user           User     @relation(fields: [userId], references: [id])
   job            EmailJob @relation(fields: [jobId], references: [id])
+  emailPromptSet EmailPromptSet? @relation(fields: [emailPromptSetId], references: [id], onDelete: SetNull)
 
   @@index([userId, sentAt])
+  @@index([emailPromptSetId])
 }
 
 model ResumeFile {

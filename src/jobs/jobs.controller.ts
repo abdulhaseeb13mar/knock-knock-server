@@ -4,6 +4,7 @@ import {
   Get,
   MessageEvent,
   NotFoundException,
+  Patch,
   Param,
   Post,
   Sse,
@@ -15,6 +16,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JobsService } from './jobs.service';
 import { JobsEventsService } from './jobs-events.service';
 import { StartJobDto } from './dto/start-job.dto';
+import { UpdateJobPromptSetDto } from './dto/update-job-prompt-set.dto';
 
 @Controller('jobs')
 export class JobsController {
@@ -26,7 +28,21 @@ export class JobsController {
   @UseGuards(JwtAuthGuard)
   @Post('start')
   start(@CurrentUser() user: { userId: string }, @Body() dto: StartJobDto) {
-    return this.jobsService.startJob(user.userId, dto.resumeId);
+    return this.jobsService.startJob(
+      user.userId,
+      dto.resumeId,
+      dto.promptSetId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/prompt-set')
+  updatePromptSet(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateJobPromptSetDto,
+  ) {
+    return this.jobsService.updatePromptSet(user.userId, id, dto.promptSetId);
   }
 
   @UseGuards(JwtAuthGuard)

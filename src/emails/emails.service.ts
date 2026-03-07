@@ -8,6 +8,7 @@ export class EmailsService {
   async listSentEmails(userId: string) {
     return this.prisma.sentEmail.findMany({
       where: { userId },
+      include: { emailPromptSet: true },
       orderBy: { sentAt: 'desc' },
     });
   }

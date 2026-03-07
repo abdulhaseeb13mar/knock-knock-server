@@ -74,6 +74,7 @@ export class JobsProcessor extends WorkerHost {
     for (const [index, recipient] of recipients.entries()) {
       const jobState = await this.prisma.emailJob.findUnique({
         where: { id: jobId },
+        include: { emailPromptSet: true },
       });
       if (jobState?.status === JobStatus.PAUSED) {
         this.jobsEvents.emit(jobId, { status: JobStatus.PAUSED });
@@ -134,6 +135,7 @@ export class JobsProcessor extends WorkerHost {
           data: {
             userId,
             jobId,
+            emailPromptSetId: jobState?.emailPromptSetId,
             recipientEmail: recipient.companyEmail.email,
             subject,
             body: bodyWithResume,

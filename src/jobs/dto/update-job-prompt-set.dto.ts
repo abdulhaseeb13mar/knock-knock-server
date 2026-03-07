@@ -1,10 +1,6 @@
 import { IsNotEmpty, IsString } from 'class-validator';
 
-export class StartJobDto {
-  @IsString()
-  @IsNotEmpty()
-  resumeId: string;
-
+export class UpdateJobPromptSetDto {
   @IsString()
   @IsNotEmpty()
   promptSetId: string;
