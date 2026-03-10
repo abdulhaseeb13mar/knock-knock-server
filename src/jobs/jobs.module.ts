@@ -6,6 +6,7 @@ import { JobsProcessor } from './jobs.processor';
 import { JobsEventsService } from './jobs-events.service';
 import { GmailIntegrationModule } from '../integrations/gmail/gmail.module';
 import { AiModule } from '../ai/ai.module';
+import { AdminRoleGuard } from '../common/guards/admin-role.guard';
 
 @Module({
   imports: [
@@ -16,6 +17,6 @@ import { AiModule } from '../ai/ai.module';
     AiModule,
   ],
   controllers: [JobsController],
-  providers: [JobsService, JobsProcessor, JobsEventsService],
+  providers: [JobsService, JobsProcessor, JobsEventsService, AdminRoleGuard],
 })
 export class JobsModule {}

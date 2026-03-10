@@ -6,7 +6,7 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { JobStatus, RecipientStatus } from '@prisma/client';
+import { JobStatus, Prisma, RecipientStatus } from '@prisma/client';
 import { JobsEventsService } from './jobs-events.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -179,6 +179,55 @@ export class JobsService {
     });
   }
 
+  async getEmailCostConfig() {
+    const config = await this.ensureAppConfig();
+    return { emailsPerKnock: config.emailsPerKnock };
+  }
+
+  async updateEmailCostConfig(adminUserId: string, emailsPerKnock: number) {
+    const updated = await this.prisma.appConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', emailsPerKnock },
+      update: { emailsPerKnock },
+    });
+
+    await this.audit.log({
+      userId: adminUserId,
+      action: 'jobs.knock-config.updated',
+      metadata: { emailsPerKnock },
+    });
+
+    return { emailsPerKnock: updated.emailsPerKnock };
+  }
+
+  async grantTestingKnock(adminUserId: string, targetUserId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { knockBalance: { increment: new Prisma.Decimal(100) } },
+      select: { id: true, knockBalance: true },
+    });
+
+    await this.audit.log({
+      userId: adminUserId,
+      action: 'jobs.knock.granted',
+      metadata: { targetUserId, amount: 100 },
+    });
+
+    return {
+      userId: updatedUser.id,
+      granted: 100,
+      knockBalance: updatedUser.knockBalance,
+    };
+  }
+
   async recordProgress(
     jobId: string,
     payload: { sentCount: number; failedCount: number },
@@ -203,5 +252,13 @@ export class JobsService {
     }
 
     return promptSet;
+  }
+
+  private async ensureAppConfig() {
+    return this.prisma.appConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', emailsPerKnock: 1 },
+      update: {},
+    });
   }
 }
