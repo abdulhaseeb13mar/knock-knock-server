@@ -20,7 +20,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await this.usersService.createUser({ email, passwordHash });
     await this.audit.log({ userId: user.id, action: 'auth.register' });
-    return this.signToken(user.id, user.email);
+    return this.signToken(user.id, user.email, user.role);
   }
 
   async login(email: string, password: string) {
@@ -33,12 +33,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     await this.audit.log({ userId: user.id, action: 'auth.login' });
-    return this.signToken(user.id, user.email);
+    return this.signToken(user.id, user.email, user.role);
   }
 
-  private signToken(userId: string, email: string) {
+  private signToken(userId: string, email: string, role: string) {
     return {
-      accessToken: this.jwtService.sign({ sub: userId, email }),
+      accessToken: this.jwtService.sign({ sub: userId, email, role }),
     };
   }
 }
