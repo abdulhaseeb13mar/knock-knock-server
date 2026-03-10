@@ -24,10 +24,17 @@ enum JobStatus {
   COMPLETED
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id                String             @id @default(uuid())
   email             String             @unique
   passwordHash      String
+  role              UserRole           @default(USER)
+  knockBalance      Decimal            @default(0) @db.Decimal(18, 6)
   createdAt         DateTime           @default(now())
   settings          UserSettings?
   connectedAccounts ConnectedAccount[]
@@ -38,6 +45,12 @@ model User {
   sentEmails        SentEmail[]
   resumes           ResumeFile[]
   auditLogs         AuditLog[]
+}
+
+model AppConfig {
+  id                   String   @id @default("default")
+  emailsPerKnock       Int      @default(1)
+  updatedAt            DateTime @updatedAt
 }
 
 model EmailPromptSet {
