@@ -1,14 +1,12 @@
 import { AiRewriteProvider } from './ai-rewrite.provider';
+import OpenAI from 'openai';
 
 export class OpenAiProvider implements AiRewriteProvider {
   async rewriteEmail(input: string, userConfig: { apiKey: string }) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${userConfig.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const client = new OpenAI({ apiKey: userConfig.apiKey });
+
+    try {
+      const response = await client.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           {
@@ -17,15 +15,12 @@ export class OpenAiProvider implements AiRewriteProvider {
           },
           { role: 'user', content: input },
         ],
-      }),
-    });
+      });
 
-    if (!response.ok) {
-      throw new Error('OpenAI request failed');
+      return response.choices?.[0]?.message?.content ?? input;
+    } catch (error) {
+      console.error('OpenAI request failed:', error);
+      throw error;
     }
-
-    // TODO: Add proper type definitions for the response
-    const json = await response.json();
-    return json.choices?.[0]?.message?.content ?? input;
   }
 }
