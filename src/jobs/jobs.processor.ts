@@ -4,9 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GmailService } from '../integrations/gmail/gmail.service';
 import { JobsEventsService } from './jobs-events.service';
 import { AiService } from '../ai/ai.service';
-import { JobStatus, RecipientStatus } from '@prisma/client';
+import { JobStatus, Prisma, RecipientStatus } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { basename } from 'path';
+import { NotFoundException } from '@nestjs/common';
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -66,6 +67,18 @@ export class JobsProcessor extends WorkerHost {
       include: { companyEmail: true },
     });
 
+    const appConfig = await this.prisma.appConfig.findUnique({
+      where: { id: 'default' },
+    });
+
+    if (!appConfig) {
+      throw new NotFoundException('User not found');
+    }
+
+    const knockCostPerEmail = this.getKnockCostPerEmailDecimal(
+      appConfig.emailsPerKnock,
+    );
+
     let sentCount = 0;
     let failedCount = 0;
     const attachment = await this.getDriveAttachment(resume.fileId);
@@ -94,7 +107,24 @@ export class JobsProcessor extends WorkerHost {
         return;
       }
 
+      let emailSent = false;
       try {
+        const reserved = await this.reserveKnockForEmail(
+          userId,
+          knockCostPerEmail,
+        );
+        if (!reserved) {
+          await this.prisma.emailJob.update({
+            where: { id: jobId },
+            data: { status: JobStatus.PAUSED },
+          });
+          this.jobsEvents.emit(jobId, {
+            status: JobStatus.PAUSED,
+            reason: 'insufficient-knock',
+          });
+          return;
+        }
+
         const subject = `Hello from, from Knock Knock`;
         const baseBody =
           'This is a placeholder email body. Replace with AI-generated content.';
@@ -124,6 +154,7 @@ export class JobsProcessor extends WorkerHost {
               ]
             : undefined,
         });
+        emailSent = true;
 
         sentCount += 1;
         await this.prisma.recipient.update({
@@ -147,6 +178,9 @@ export class JobsProcessor extends WorkerHost {
           data: { sentCount: { increment: 1 } },
         });
       } catch (error) {
+        if (!emailSent) {
+          await this.refundKnockForEmail(userId, knockCostPerEmail);
+        }
         failedCount += 1;
         await this.prisma.recipient.update({
           where: { id: recipient.id },
@@ -252,5 +286,42 @@ export class JobsProcessor extends WorkerHost {
     const decoded = decodeURIComponent(match[1]).replace(/^"|"$/g, '');
     const normalized = basename(decoded.trim());
     return normalized || null;
+  }
+
+  private getKnockCostPerEmailDecimal(emailsPerKnock: number) {
+    if (!Number.isFinite(emailsPerKnock) || emailsPerKnock <= 0) {
+      return new Prisma.Decimal(1);
+    }
+
+    return new Prisma.Decimal(1).dividedBy(emailsPerKnock);
+  }
+
+  private async reserveKnockForEmail(
+    userId: string,
+    knockCostPerEmail: Prisma.Decimal,
+  ) {
+    const updated = await this.prisma.user.update({
+      where: {
+        id: userId,
+        knockBalance: { gte: knockCostPerEmail },
+      },
+      data: {
+        knockBalance: { decrement: knockCostPerEmail },
+      },
+    });
+
+    return updated ? true : false;
+  }
+
+  private async refundKnockForEmail(
+    userId: string,
+    knockCostPerEmail: Prisma.Decimal,
+  ) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        knockBalance: { increment: knockCostPerEmail },
+      },
+    });
   }
 }
