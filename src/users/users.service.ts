@@ -4,8 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AiProvider } from '@prisma/client';
+import { AiProvider, Prisma, UserRole, UserSettings } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+
+export interface LatestUserData {
+  id: string;
+  email: string;
+  role: UserRole;
+  knockBalance: Prisma.Decimal;
+  settings: UserSettings | null;
+}
 
 @Injectable()
 export class UsersService {
@@ -20,6 +28,25 @@ export class UsersService {
 
   async findById(id: string) {
     return this.prisma.user.findUnique({ where: { id } });
+  }
+
+  async getLatestUserData(userId: string): Promise<LatestUserData> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        knockBalance: true,
+        settings: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
   }
 
   async createUser(params: { email: string; passwordHash: string }) {

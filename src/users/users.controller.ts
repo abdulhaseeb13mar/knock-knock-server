@@ -18,6 +18,12 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getLatestUserData(@CurrentUser() user: { userId: string }) {
+    return this.usersService.getLatestUserData(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('resumes/drive-link')
   async saveDriveResume(
     @CurrentUser() user: { userId: string },
