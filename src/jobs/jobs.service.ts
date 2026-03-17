@@ -118,6 +118,15 @@ export class JobsService {
   }
 
   async resumeJob(userId: string, jobId: string) {
+    const latestResume = await this.prisma.resumeFile.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latestResume) {
+      throw new NotFoundException('Resume not found');
+    }
+
     await this.prisma.emailJob.updateMany({
       where: { id: jobId, userId },
       data: { status: JobStatus.RUNNING },
@@ -128,6 +137,13 @@ export class JobsService {
     if (!job) {
       throw new NotFoundException('Job not found');
     }
+
+    await this.queue.add('send-bulk-email', {
+      jobId: job.id,
+      userId,
+      resumeId: latestResume.id,
+    });
+
     this.jobsEvents.emit(job.id, { status: job.status });
     await this.audit.log({
       userId,
