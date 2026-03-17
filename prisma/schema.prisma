@@ -146,6 +146,8 @@ model EmailJob {
   id          String    @id @default(uuid())
   userId      String
   emailPromptSetId String?
+  aiProvider  AiProvider?
+  dailyLimit  Int?
   status      JobStatus @default(RUNNING)
   total       Int
   sentCount   Int       @default(0)
