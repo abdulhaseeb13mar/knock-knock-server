@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GmailService } from '../integrations/gmail/gmail.service';
 import { JobsEventsService } from './jobs-events.service';
 import { AiService } from '../ai/ai.service';
-import { JobStatus, Prisma, RecipientStatus } from '@prisma/client';
+import { AiProvider, JobStatus, Prisma, RecipientStatus } from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { basename } from 'path';
 import { NotFoundException } from '@nestjs/common';
@@ -94,8 +94,9 @@ export class JobsProcessor extends WorkerHost {
         return;
       }
 
+      const configuredDailyLimit = jobState?.dailyLimit ?? settings.dailyLimit;
       const dailyCount = await this.countDailySends(userId);
-      if (dailyCount >= settings.dailyLimit) {
+      if (dailyCount >= configuredDailyLimit) {
         await this.prisma.emailJob.update({
           where: { id: jobId },
           data: { status: JobStatus.PAUSED },
@@ -132,7 +133,7 @@ export class JobsProcessor extends WorkerHost {
           settings.rewriteInterval > 0 &&
           (index + 1) % settings.rewriteInterval === 0;
         const body = shouldRewrite
-          ? await this.safeRewrite(userId, baseBody)
+          ? await this.safeRewrite(userId, baseBody, jobState?.aiProvider)
           : baseBody;
         const bodyWithResume = shouldUseLinkOnly
           ? `${body}\n\nResume: ${resume.sharedUrl}`
@@ -213,9 +214,17 @@ export class JobsProcessor extends WorkerHost {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async safeRewrite(userId: string, content: string) {
+  private async safeRewrite(
+    userId: string,
+    content: string,
+    preferredProvider?: AiProvider | null,
+  ) {
     try {
-      return await this.aiService.rewriteEmail(userId, content);
+      return await this.aiService.rewriteEmail(
+        userId,
+        content,
+        preferredProvider ?? undefined,
+      );
     } catch {
       return content;
     }
