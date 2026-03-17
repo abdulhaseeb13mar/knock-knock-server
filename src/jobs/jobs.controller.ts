@@ -7,6 +7,7 @@ import {
   Patch,
   Param,
   Post,
+  Query,
   Sse,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { StartJobDto } from './dto/start-job.dto';
 import { UpdateJobPromptSetDto } from './dto/update-job-prompt-set.dto';
 import { UpdateEmailsPerKnockDto } from './dto/update-emails-per-knock.dto';
 import { GrantKnockBalanceDto } from './dto/grant-knock-balance.dto';
+import { ListJobsQueryDto } from './dto/list-jobs-query.dto';
 
 @Controller('jobs')
 export class JobsController {
@@ -27,6 +29,21 @@ export class JobsController {
     private readonly jobsService: JobsService,
     private readonly jobsEvents: JobsEventsService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Get()
+  list(
+    @CurrentUser() user: { userId: string },
+    @Query() query: ListJobsQueryDto,
+  ) {
+    return this.jobsService.listJobs(user.userId, query.status);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  getDetails(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
+    return this.jobsService.getJobDetails(user.userId, id);
+  }
 
   @UseGuards(JwtAuthGuard)
   @Post('start')

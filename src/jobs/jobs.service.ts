@@ -179,6 +179,44 @@ export class JobsService {
     });
   }
 
+  async listJobs(userId: string, status?: JobStatus) {
+    const where: Prisma.EmailJobWhereInput = { userId };
+    if (status) {
+      where.status = status;
+    }
+
+    return this.prisma.emailJob.findMany({
+      where,
+      orderBy: { startedAt: 'desc' },
+      include: {
+        emailPromptSet: { select: { id: true, emailFormat: true } },
+        _count: { select: { recipients: true, sentEmails: true } },
+      },
+    });
+  }
+
+  async getJobDetails(userId: string, jobId: string) {
+    const job = await this.prisma.emailJob.findFirst({
+      where: { id: jobId, userId },
+      include: {
+        emailPromptSet: true,
+        recipients: {
+          include: { companyEmail: { include: { company: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        sentEmails: {
+          orderBy: { sentAt: 'desc' },
+        },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return job;
+  }
+
   async getEmailCostConfig() {
     const config = await this.ensureAppConfig();
     return { emailsPerKnock: config.emailsPerKnock };
