@@ -22,6 +22,7 @@ import { UpdateJobPromptSetDto } from './dto/update-job-prompt-set.dto';
 import { UpdateEmailsPerKnockDto } from './dto/update-emails-per-knock.dto';
 import { GrantKnockBalanceDto } from './dto/grant-knock-balance.dto';
 import { ListJobsQueryDto } from './dto/list-jobs-query.dto';
+import { CreateCampaignDto } from './dto/create-campaign.dto';
 
 @Controller('jobs')
 export class JobsController {
@@ -43,6 +44,15 @@ export class JobsController {
   @Get(':id')
   getDetails(@CurrentUser() user: { userId: string }, @Param('id') id: string) {
     return this.jobsService.getJobDetails(user.userId, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('campaigns')
+  createCampaign(
+    @CurrentUser() user: { userId: string },
+    @Body() dto: CreateCampaignDto,
+  ) {
+    return this.jobsService.createCampaign(user.userId, dto);
   }
 
   @UseGuards(JwtAuthGuard)
