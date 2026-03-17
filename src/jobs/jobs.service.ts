@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JobStatus, Prisma, RecipientStatus } from '@prisma/client';
 import { JobsEventsService } from './jobs-events.service';
 import { AuditService } from '../audit/audit.service';
+import { CreateCampaignDto } from './dto/create-campaign.dto';
 
 @Injectable()
 export class JobsService {
@@ -18,6 +19,96 @@ export class JobsService {
     @InjectQueue('email-jobs') private readonly queue: Queue,
     private readonly audit: AuditService,
   ) {}
+
+  async createCampaign(userId: string, dto: CreateCampaignDto) {
+    const uniqueRecipientIds = Array.from(new Set(dto.recipientIds));
+    const selectedPromptSetId = dto.emailPromptSetId;
+
+    if (selectedPromptSetId) {
+      await this.getPromptSetForUser(userId, selectedPromptSetId);
+    }
+
+    const aiKey = await this.prisma.aiKey.findUnique({
+      where: {
+        userId_provider: { userId, provider: dto.aiProvider },
+      },
+      select: { id: true },
+    });
+
+    if (!aiKey) {
+      throw new BadRequestException(
+        `No API key saved for provider: ${dto.aiProvider}`,
+      );
+    }
+
+    const recipients = await this.prisma.recipient.findMany({
+      where: {
+        id: { in: uniqueRecipientIds },
+        userId,
+        status: RecipientStatus.PENDING,
+        jobId: null,
+      },
+      select: { id: true },
+    });
+
+    if (recipients.length !== uniqueRecipientIds.length) {
+      throw new BadRequestException(
+        'Some recipients are invalid, already assigned, or not pending',
+      );
+    }
+
+    const campaign = await this.prisma.$transaction(async (tx) => {
+      const promptSetId = selectedPromptSetId
+        ? selectedPromptSetId
+        : (
+            await tx.emailPromptSet.create({
+              data: {
+                userId,
+                emailFormat: dto.emailFormat!,
+                aiPrompt: dto.aiPrompt!,
+              },
+            })
+          ).id;
+
+      const job = await tx.emailJob.create({
+        data: {
+          userId,
+          emailPromptSetId: promptSetId,
+          status: JobStatus.PAUSED,
+          total: recipients.length,
+          aiProvider: dto.aiProvider,
+          dailyLimit: dto.dailyLimit,
+        },
+      });
+
+      await tx.recipient.updateMany({
+        where: { id: { in: uniqueRecipientIds } },
+        data: { jobId: job.id },
+      });
+
+      return job;
+    });
+
+    await this.audit.log({
+      userId,
+      action: 'jobs.campaign.created',
+      metadata: {
+        jobId: campaign.id,
+        recipientCount: uniqueRecipientIds.length,
+        emailPromptSetId: campaign.emailPromptSetId,
+        usedExistingPromptSet: Boolean(selectedPromptSetId),
+        aiProvider: dto.aiProvider,
+        dailyLimit: dto.dailyLimit,
+      },
+    });
+
+    this.jobsEvents.emit(campaign.id, {
+      status: campaign.status,
+      total: campaign.total,
+    });
+
+    return campaign;
+  }
 
   async startJob(userId: string, resumeId: string, promptSetId: string) {
     const resume = await this.prisma.resumeFile.findFirst({

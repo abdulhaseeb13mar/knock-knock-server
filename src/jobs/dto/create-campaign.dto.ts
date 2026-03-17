@@ -4,8 +4,10 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { AiProvider } from '@prisma/client';
 
@@ -18,13 +20,20 @@ export class CreateCampaignDto {
   @IsEnum(AiProvider)
   aiProvider: AiProvider;
 
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  emailFormat: string;
+  emailPromptSetId?: string;
 
+  @ValidateIf((dto: CreateCampaignDto) => !dto.emailPromptSetId)
   @IsString()
   @IsNotEmpty()
-  aiPrompt: string;
+  emailFormat?: string;
+
+  @ValidateIf((dto: CreateCampaignDto) => !dto.emailPromptSetId)
+  @IsString()
+  @IsNotEmpty()
+  aiPrompt?: string;
 
   @IsInt()
   @Min(1)
