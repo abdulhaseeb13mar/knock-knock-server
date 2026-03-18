@@ -6,17 +6,17 @@ import {
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { JobStatus, Prisma, RecipientStatus } from '@prisma/client';
-import { JobsEventsService } from './jobs-events.service';
+import { CampaignStatus, Prisma, RecipientStatus } from '@prisma/client';
+import { CampaignsEventsService } from './campaigns-events.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 
 @Injectable()
-export class JobsService {
+export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jobsEvents: JobsEventsService,
-    @InjectQueue('email-jobs') private readonly queue: Queue,
+    private readonly campaignsEvents: CampaignsEventsService,
+    @InjectQueue('email-campaigns') private readonly queue: Queue,
     private readonly audit: AuditService,
   ) {}
 
@@ -46,7 +46,7 @@ export class JobsService {
         id: { in: uniqueRecipientIds },
         userId,
         status: RecipientStatus.PENDING,
-        jobId: null,
+        campaignId: null,
       },
       select: { id: true },
     });
@@ -70,11 +70,11 @@ export class JobsService {
             })
           ).id;
 
-      const job = await tx.emailJob.create({
+      const createdCampaign = await tx.emailCampaign.create({
         data: {
           userId,
           emailPromptSetId: promptSetId,
-          status: JobStatus.PAUSED,
+          status: CampaignStatus.PAUSED,
           total: recipients.length,
           aiProvider: dto.aiProvider,
           dailyLimit: dto.dailyLimit,
@@ -83,17 +83,17 @@ export class JobsService {
 
       await tx.recipient.updateMany({
         where: { id: { in: uniqueRecipientIds } },
-        data: { jobId: job.id },
+        data: { campaignId: createdCampaign.id },
       });
 
-      return job;
+      return createdCampaign;
     });
 
     await this.audit.log({
       userId,
-      action: 'jobs.campaign.created',
+      action: 'campaigns.created',
       metadata: {
-        jobId: campaign.id,
+        campaignId: campaign.id,
         recipientCount: uniqueRecipientIds.length,
         emailPromptSetId: campaign.emailPromptSetId,
         usedExistingPromptSet: Boolean(selectedPromptSetId),
@@ -102,7 +102,7 @@ export class JobsService {
       },
     });
 
-    this.jobsEvents.emit(campaign.id, {
+    this.campaignsEvents.emit(campaign.id, {
       status: campaign.status,
       total: campaign.total,
     });
@@ -110,7 +110,7 @@ export class JobsService {
     return campaign;
   }
 
-  async startJob(userId: string, resumeId: string, promptSetId: string) {
+  async startCampaign(userId: string, resumeId: string, promptSetId: string) {
     const resume = await this.prisma.resumeFile.findFirst({
       where: { id: resumeId, userId },
     });
@@ -130,85 +130,96 @@ export class JobsService {
       return { message: 'No pending recipients' };
     }
 
-    const job = await this.prisma.emailJob.create({
+    const campaign = await this.prisma.emailCampaign.create({
       data: {
         userId,
         emailPromptSetId: promptSetId,
-        status: JobStatus.RUNNING,
+        status: CampaignStatus.RUNNING,
         total: recipients.length,
       },
     });
 
     await this.prisma.recipient.updateMany({
       where: { id: { in: recipients.map((r) => r.id) } },
-      data: { jobId: job.id },
+      data: { campaignId: campaign.id },
     });
 
     await this.queue.add('send-bulk-email', {
-      jobId: job.id,
+      campaignId: campaign.id,
       userId,
       resumeId,
     });
 
-    this.jobsEvents.emit(job.id, { status: job.status, total: job.total });
+    this.campaignsEvents.emit(campaign.id, {
+      status: campaign.status,
+      total: campaign.total,
+    });
     await this.audit.log({
       userId,
-      action: 'jobs.start',
-      metadata: { jobId: job.id, resumeId, promptSetId },
+      action: 'campaigns.started',
+      metadata: { campaignId: campaign.id, resumeId, promptSetId },
     });
 
-    return job;
+    return campaign;
   }
 
-  async updatePromptSet(userId: string, jobId: string, promptSetId: string) {
+  async updatePromptSet(
+    userId: string,
+    campaignId: string,
+    promptSetId: string,
+  ) {
     await this.getPromptSetForUser(userId, promptSetId);
 
-    const job = await this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+    const campaign = await this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
     });
 
-    if (!job) {
-      throw new NotFoundException('Job not found');
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
     }
 
-    if (job.status === JobStatus.COMPLETED) {
+    if (campaign.status === CampaignStatus.COMPLETED) {
       throw new BadRequestException(
-        'Cannot change prompt set for a completed job',
+        'Cannot change prompt set for a completed campaign',
       );
     }
 
-    const updatedJob = await this.prisma.emailJob.update({
-      where: { id: jobId },
+    const updatedCampaign = await this.prisma.emailCampaign.update({
+      where: { id: campaignId },
       data: { emailPromptSetId: promptSetId },
     });
 
-    this.jobsEvents.emit(jobId, { emailPromptSetId: promptSetId });
+    this.campaignsEvents.emit(campaignId, { emailPromptSetId: promptSetId });
     await this.audit.log({
       userId,
-      action: 'jobs.prompt-set.updated',
-      metadata: { jobId, promptSetId },
+      action: 'campaigns.prompt-set.updated',
+      metadata: { campaignId, promptSetId },
     });
 
-    return updatedJob;
+    return updatedCampaign;
   }
 
-  async pauseJob(userId: string, jobId: string) {
-    await this.prisma.emailJob.updateMany({
-      where: { id: jobId, userId },
-      data: { status: JobStatus.PAUSED },
+  async pauseCampaign(userId: string, campaignId: string) {
+    await this.prisma.emailCampaign.updateMany({
+      where: { id: campaignId, userId },
+      data: { status: CampaignStatus.PAUSED },
     });
-    const job = await this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+    const campaign = await this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
     });
-    if (!job) {
-      throw new NotFoundException('Job not found');
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
     }
-    this.jobsEvents.emit(job.id, { status: job.status });
-    await this.audit.log({ userId, action: 'jobs.pause', metadata: { jobId } });
-    return job;
+    this.campaignsEvents.emit(campaign.id, { status: campaign.status });
+    await this.audit.log({
+      userId,
+      action: 'campaigns.paused',
+      metadata: { campaignId },
+    });
+    return campaign;
   }
 
-  async resumeJob(userId: string, jobId: string) {
+  async resumeCampaign(userId: string, campaignId: string) {
     const latestResume = await this.prisma.resumeFile.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -218,33 +229,33 @@ export class JobsService {
       throw new NotFoundException('Resume not found');
     }
 
-    await this.prisma.emailJob.updateMany({
-      where: { id: jobId, userId },
-      data: { status: JobStatus.RUNNING },
+    await this.prisma.emailCampaign.updateMany({
+      where: { id: campaignId, userId },
+      data: { status: CampaignStatus.RUNNING },
     });
-    const job = await this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+    const campaign = await this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
     });
-    if (!job) {
-      throw new NotFoundException('Job not found');
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
     }
 
     await this.queue.add('send-bulk-email', {
-      jobId: job.id,
+      campaignId: campaign.id,
       userId,
       resumeId: latestResume.id,
     });
 
-    this.jobsEvents.emit(job.id, { status: job.status });
+    this.campaignsEvents.emit(campaign.id, { status: campaign.status });
     await this.audit.log({
       userId,
-      action: 'jobs.resume',
-      metadata: { jobId },
+      action: 'campaigns.resumed',
+      metadata: { campaignId },
     });
-    return job;
+    return campaign;
   }
 
-  async retryFailed(userId: string, jobId: string) {
+  async retryFailed(userId: string, campaignId: string) {
     const latestResume = await this.prisma.resumeFile.findFirst({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -255,44 +266,51 @@ export class JobsService {
     }
 
     await this.prisma.recipient.updateMany({
-      where: { userId, jobId, status: RecipientStatus.FAILED },
+      where: { userId, campaignId, status: RecipientStatus.FAILED },
       data: { status: RecipientStatus.PENDING, error: null },
     });
 
-    await this.prisma.emailJob.updateMany({
-      where: { id: jobId, userId },
-      data: { status: JobStatus.RUNNING },
+    await this.prisma.emailCampaign.updateMany({
+      where: { id: campaignId, userId },
+      data: { status: CampaignStatus.RUNNING },
     });
-    const job = await this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+    const campaign = await this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
     });
-    if (!job) {
-      throw new NotFoundException('Job not found');
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
     }
 
     await this.queue.add('send-bulk-email', {
-      jobId: job.id,
+      campaignId: campaign.id,
       userId,
       resumeId: latestResume.id,
     });
-    this.jobsEvents.emit(job.id, { status: job.status, retry: true });
-    await this.audit.log({ userId, action: 'jobs.retry', metadata: { jobId } });
-    return job;
+    this.campaignsEvents.emit(campaign.id, {
+      status: campaign.status,
+      retry: true,
+    });
+    await this.audit.log({
+      userId,
+      action: 'campaigns.retried',
+      metadata: { campaignId },
+    });
+    return campaign;
   }
 
-  async getStatus(userId: string, jobId: string) {
-    return this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+  async getStatus(userId: string, campaignId: string) {
+    return this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
     });
   }
 
-  async listJobs(userId: string, status?: JobStatus) {
-    const where: Prisma.EmailJobWhereInput = { userId };
+  async listCampaigns(userId: string, status?: CampaignStatus) {
+    const where: Prisma.EmailCampaignWhereInput = { userId };
     if (status) {
       where.status = status;
     }
 
-    return this.prisma.emailJob.findMany({
+    return this.prisma.emailCampaign.findMany({
       where,
       orderBy: { startedAt: 'desc' },
       include: {
@@ -302,9 +320,9 @@ export class JobsService {
     });
   }
 
-  async getJobDetails(userId: string, jobId: string) {
-    const job = await this.prisma.emailJob.findFirst({
-      where: { id: jobId, userId },
+  async getCampaignDetails(userId: string, campaignId: string) {
+    const campaign = await this.prisma.emailCampaign.findFirst({
+      where: { id: campaignId, userId },
       include: {
         emailPromptSet: true,
         recipients: {
@@ -317,11 +335,11 @@ export class JobsService {
       },
     });
 
-    if (!job) {
-      throw new NotFoundException('Job not found');
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
     }
 
-    return job;
+    return campaign;
   }
 
   async getEmailCostConfig() {
@@ -338,7 +356,7 @@ export class JobsService {
 
     await this.audit.log({
       userId: adminUserId,
-      action: 'jobs.knock-config.updated',
+      action: 'campaigns.knock-config.updated',
       metadata: { emailsPerKnock },
     });
 
@@ -362,7 +380,7 @@ export class JobsService {
 
     await this.audit.log({
       userId: adminUserId,
-      action: 'jobs.knock.granted',
+      action: 'campaigns.knock.granted',
       metadata: { targetUserId, amount: 100 },
     });
 
@@ -374,17 +392,17 @@ export class JobsService {
   }
 
   async recordProgress(
-    jobId: string,
+    campaignId: string,
     payload: { sentCount: number; failedCount: number },
   ) {
-    await this.prisma.emailJob.update({
-      where: { id: jobId },
+    await this.prisma.emailCampaign.update({
+      where: { id: campaignId },
       data: {
         sentCount: payload.sentCount,
         failedCount: payload.failedCount,
       },
     });
-    this.jobsEvents.emit(jobId, payload);
+    this.campaignsEvents.emit(campaignId, payload);
   }
 
   private async getPromptSetForUser(userId: string, promptSetId: string) {

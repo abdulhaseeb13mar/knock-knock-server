@@ -101,12 +101,13 @@ pnpm run start:dev
 - PUT /ai/keys/priority
 - POST /recipients/import
 - GET /recipients
-- POST /jobs/start
-- POST /jobs/:id/pause
-- POST /jobs/:id/resume
-- POST /jobs/:id/retry
-- GET /jobs/:id/status
-- GET /jobs/:id/stream (SSE)
+- POST /campaigns
+- POST /campaigns/start
+- POST /campaigns/:id/pause
+- POST /campaigns/:id/resume
+- POST /campaigns/:id/retry
+- GET /campaigns/:id/status
+- GET /campaigns/:id/stream (SSE)
 - GET /emails/sent
 
 ## Resume links via Google Drive
@@ -125,16 +126,16 @@ Routes
 
 Each resume record keeps the Drive `fileId`, which is converted to `https://drive.google.com/uc?export=download&id=FILE_ID` when emails are sent. Attachments are only downloaded and included when the file is smaller than ~25 MB; otherwise, the email body appends the shared URL so every recipient still receives resume access.
 
-When starting a job you must now include the desired resume:
+When starting a campaign you must now include the desired resume:
 
 ```
-POST /jobs/start
+POST /campaigns/start
 {
   "resumeId": "<resumeId from GET /users/resumes>"
 }
 ```
 
-The worker reads the Drive file, attempts to download it once per job, and attaches it when the size can be determined and remains under Gmail’s 25 MB limit. If the download fails or the size is unknown/too big, the job continues but the email body gets `Resume: https://drive.google.com/…` appended instead.
+The worker reads the Drive file, attempts to download it once per campaign, and attaches it when the size can be determined and remains under Gmail’s 25 MB limit. If the download fails or the size is unknown/too big, the campaign continues but the email body gets `Resume: https://drive.google.com/...` appended instead.
 
 ## Project setup
 

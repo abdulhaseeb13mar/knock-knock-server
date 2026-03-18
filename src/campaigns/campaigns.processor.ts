@@ -2,9 +2,14 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { GmailService } from '../integrations/gmail/gmail.service';
-import { JobsEventsService } from './jobs-events.service';
+import { CampaignsEventsService } from './campaigns-events.service';
 import { AiService } from '../ai/ai.service';
-import { AiProvider, JobStatus, Prisma, RecipientStatus } from '@prisma/client';
+import {
+  AiProvider,
+  CampaignStatus,
+  Prisma,
+  RecipientStatus,
+} from '@prisma/client';
 import nodemailer from 'nodemailer';
 import { basename } from 'path';
 import { NotFoundException } from '@nestjs/common';
@@ -17,19 +22,21 @@ type ResumeAttachment = {
   contentType: string;
 };
 
-@Processor('email-jobs')
-export class JobsProcessor extends WorkerHost {
+@Processor('email-campaigns')
+export class CampaignsProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gmailService: GmailService,
-    private readonly jobsEvents: JobsEventsService,
+    private readonly campaignsEvents: CampaignsEventsService,
     private readonly aiService: AiService,
   ) {
     super();
   }
 
-  async process(job: Job<{ jobId: string; userId: string; resumeId: string }>) {
-    const { jobId, userId, resumeId } = job.data;
+  async process(
+    job: Job<{ campaignId: string; userId: string; resumeId: string }>,
+  ) {
+    const { campaignId, userId, resumeId } = job.data;
     const [user, settings] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: userId } }),
       this.prisma.userSettings.findUnique({ where: { userId } }),
@@ -62,7 +69,7 @@ export class JobsProcessor extends WorkerHost {
     });
 
     const recipients = await this.prisma.recipient.findMany({
-      where: { jobId, status: RecipientStatus.PENDING },
+      where: { campaignId, status: RecipientStatus.PENDING },
       orderBy: { createdAt: 'asc' },
       include: { companyEmail: true },
     });
@@ -85,24 +92,27 @@ export class JobsProcessor extends WorkerHost {
     const shouldUseLinkOnly = !attachment;
 
     for (const [index, recipient] of recipients.entries()) {
-      const jobState = await this.prisma.emailJob.findUnique({
-        where: { id: jobId },
+      const campaignState = await this.prisma.emailCampaign.findUnique({
+        where: { id: campaignId },
         include: { emailPromptSet: true },
       });
-      if (jobState?.status === JobStatus.PAUSED) {
-        this.jobsEvents.emit(jobId, { status: JobStatus.PAUSED });
+      if (campaignState?.status === CampaignStatus.PAUSED) {
+        this.campaignsEvents.emit(campaignId, {
+          status: CampaignStatus.PAUSED,
+        });
         return;
       }
 
-      const configuredDailyLimit = jobState?.dailyLimit ?? settings.dailyLimit;
+      const configuredDailyLimit =
+        campaignState?.dailyLimit ?? settings.dailyLimit;
       const dailyCount = await this.countDailySends(userId);
       if (dailyCount >= configuredDailyLimit) {
-        await this.prisma.emailJob.update({
-          where: { id: jobId },
-          data: { status: JobStatus.PAUSED },
+        await this.prisma.emailCampaign.update({
+          where: { id: campaignId },
+          data: { status: CampaignStatus.PAUSED },
         });
-        this.jobsEvents.emit(jobId, {
-          status: JobStatus.PAUSED,
+        this.campaignsEvents.emit(campaignId, {
+          status: CampaignStatus.PAUSED,
           reason: 'daily-limit',
         });
         return;
@@ -115,12 +125,12 @@ export class JobsProcessor extends WorkerHost {
           knockCostPerEmail,
         );
         if (!reserved) {
-          await this.prisma.emailJob.update({
-            where: { id: jobId },
-            data: { status: JobStatus.PAUSED },
+          await this.prisma.emailCampaign.update({
+            where: { id: campaignId },
+            data: { status: CampaignStatus.PAUSED },
           });
-          this.jobsEvents.emit(jobId, {
-            status: JobStatus.PAUSED,
+          this.campaignsEvents.emit(campaignId, {
+            status: CampaignStatus.PAUSED,
             reason: 'insufficient-knock',
           });
           return;
@@ -133,7 +143,7 @@ export class JobsProcessor extends WorkerHost {
           settings.rewriteInterval > 0 &&
           (index + 1) % settings.rewriteInterval === 0;
         const body = shouldRewrite
-          ? await this.safeRewrite(userId, baseBody, jobState?.aiProvider)
+          ? await this.safeRewrite(userId, baseBody, campaignState?.aiProvider)
           : baseBody;
         const bodyWithResume = shouldUseLinkOnly
           ? `${body}\n\nResume: ${resume.sharedUrl}`
@@ -166,16 +176,16 @@ export class JobsProcessor extends WorkerHost {
         await this.prisma.sentEmail.create({
           data: {
             userId,
-            jobId,
-            emailPromptSetId: jobState?.emailPromptSetId,
+            campaignId,
+            emailPromptSetId: campaignState?.emailPromptSetId,
             recipientEmail: recipient.companyEmail.email,
             subject,
             body: bodyWithResume,
           },
         });
 
-        await this.prisma.emailJob.update({
-          where: { id: jobId },
+        await this.prisma.emailCampaign.update({
+          where: { id: campaignId },
           data: { sentCount: { increment: 1 } },
         });
       } catch (error) {
@@ -191,23 +201,23 @@ export class JobsProcessor extends WorkerHost {
           },
         });
 
-        await this.prisma.emailJob.update({
-          where: { id: jobId },
+        await this.prisma.emailCampaign.update({
+          where: { id: campaignId },
           data: { failedCount: { increment: 1 } },
         });
       }
 
-      this.jobsEvents.emit(jobId, { sentCount, failedCount });
+      this.campaignsEvents.emit(campaignId, { sentCount, failedCount });
       await this.sleep(settings.delayMs);
     }
 
-    await this.prisma.emailJob.update({
-      where: { id: jobId },
-      data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+    await this.prisma.emailCampaign.update({
+      where: { id: campaignId },
+      data: { status: CampaignStatus.COMPLETED, completedAt: new Date() },
     });
 
-    this.jobsEvents.emit(jobId, { status: JobStatus.COMPLETED });
-    this.jobsEvents.complete(jobId);
+    this.campaignsEvents.emit(campaignId, { status: CampaignStatus.COMPLETED });
+    this.campaignsEvents.complete(campaignId);
   }
 
   private sleep(ms: number) {

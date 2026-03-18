@@ -18,7 +18,7 @@ enum RecipientStatus {
   FAILED
 }
 
-enum JobStatus {
+enum CampaignStatus {
   RUNNING
   PAUSED
   COMPLETED
@@ -41,7 +41,7 @@ model User {
   aiKeys            AiKey[]
   emailPromptSets   EmailPromptSet[]
   recipients        Recipient[]
-  jobs              EmailJob[]
+  campaigns         EmailCampaign[]
   sentEmails        SentEmail[]
   resumes           ResumeFile[]
   auditLogs         AuditLog[]
@@ -59,8 +59,8 @@ model EmailPromptSet {
   emailFormat String
   aiPrompt    String
   createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id])
-  emailJobs   EmailJob[]
+  user        User            @relation(fields: [userId], references: [id])
+  emailCampaigns EmailCampaign[]
   sentEmails  SentEmail[]
 
   @@index([userId])
@@ -109,10 +109,10 @@ model Recipient {
   status         RecipientStatus @default(PENDING)
   error          String?
   sentAt         DateTime?
-  jobId          String?
+  campaignId     String?
   createdAt      DateTime        @default(now())
   user           User            @relation(fields: [userId], references: [id])
-  job            EmailJob?       @relation(fields: [jobId], references: [id])
+  campaign       EmailCampaign?  @relation(fields: [campaignId], references: [id])
   companyEmail   CompanyEmail    @relation(fields: [companyEmailId], references: [id])
 
   @@index([userId, status])
@@ -142,13 +142,13 @@ model CompanyEmail {
   @@index([companyId])
 }
 
-model EmailJob {
+model EmailCampaign {
   id          String    @id @default(uuid())
   userId      String
   emailPromptSetId String?
   aiProvider  AiProvider?
   dailyLimit  Int?
-  status      JobStatus @default(RUNNING)
+  status      CampaignStatus @default(RUNNING)
   total       Int
   sentCount   Int       @default(0)
   failedCount Int       @default(0)
@@ -166,14 +166,14 @@ model EmailJob {
 model SentEmail {
   id             String   @id @default(uuid())
   userId         String
-  jobId          String
+  campaignId     String
   emailPromptSetId String?
   recipientEmail String
   subject        String
   body           String
   sentAt         DateTime @default(now())
   user           User     @relation(fields: [userId], references: [id])
-  job            EmailJob @relation(fields: [jobId], references: [id])
+  campaign       EmailCampaign @relation(fields: [campaignId], references: [id])
   emailPromptSet EmailPromptSet? @relation(fields: [emailPromptSetId], references: [id], onDelete: SetNull)
 
   @@index([userId, sentAt])

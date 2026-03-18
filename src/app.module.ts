@@ -15,7 +15,7 @@ import { UsersModule } from './users/users.module';
 import { GmailIntegrationModule } from './integrations/gmail/gmail.module';
 import { AiModule } from './ai/ai.module';
 import { RecipientsModule } from './recipients/recipients.module';
-import { JobsModule } from './jobs/jobs.module';
+import { CampaignsModule } from './campaigns/campaigns.module';
 import { EmailsModule } from './emails/emails.module';
 import { EmailPromptSetsModule } from './email-prompt-sets/email-prompt-sets.module';
 
@@ -37,7 +37,7 @@ import { EmailPromptSetsModule } from './email-prompt-sets/email-prompt-sets.mod
     GmailIntegrationModule,
     AiModule,
     RecipientsModule,
-    JobsModule,
+    CampaignsModule,
     EmailsModule,
     EmailPromptSetsModule,
   ],
